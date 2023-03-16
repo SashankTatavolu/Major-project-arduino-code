@@ -1,0 +1,99 @@
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(13, 12, 14, 27, 26, 25);
+#define BLYNK_PRINT Serial
+#include "EmonLib.h"    //  EmonLib handles the retrieval of data from both sensors as well as the calculation for the RMS and power values
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>  // BlynkSimpleEsp32 integrates the program to the Blynk Mobile app.
+ 
+EnergyMonitor emon;
+ 
+#define vCalibration 83.3
+#define currCalibration 0.50   // When no load is connected or when the load is powered off the Current and Voltage parameters should be almost 0. If it shows some other value, then you need to modify the following calibration factor in the code.
+
+
+ 
+BlynkTimer timer;  // The Blynk timer object is then created to handle the sending of data to the Blynk mobile app.
+ 
+char auth[] = "hsYG_5da4gdP9jZkL18O5RNcJSrBT-Ou";
+ 
+char ssid[] = "Alexahome";
+char pass[] = "loranthus";   // SSID & Password on our local wifi network & insert the authentication code from the Blynk.
+ 
+float kWh = 0;
+unsigned long lastmillis = millis();
+ 
+void myTimerEvent()
+{
+  emon.calcVI(20, 2000);  // Using emon.calcVI(20, 2000), the real power, apparent power, power factor, Vrms, and Irms are being calculated.  
+  kWh = kWh + emon.apparentPower * (millis() - lastmillis) / 3600000000.0;
+  yield();
+  Serial.print("Vrms: ");
+  Serial.print(emon.Vrms, 2);
+  Serial.print("V");
+ 
+  Serial.print("\tIrms: ");
+  Serial.print(emon.Irms, 4);
+  Serial.print("A");
+ 
+  Serial.print("\tPower: ");
+  Serial.print(emon.apparentPower, 4);
+  Serial.print("W");
+ 
+  Serial.print("\tkWh: ");
+  Serial.print(kWh, 5);
+  Serial.println("kWh");
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Vrms:");
+  lcd.print(emon.Vrms, 2);
+  lcd.print("V");
+  lcd.setCursor(0, 1);
+  lcd.print("Irms:");
+  lcd.print(emon.Irms, 4);
+  lcd.print("A");
+  delay(2500);
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Power:");
+  lcd.print(emon.apparentPower, 4);
+  lcd.print("W");
+  lcd.setCursor(0, 1);
+  lcd.print("kWh:");
+  lcd.print(kWh, 4);
+  lcd.print("W");
+  delay(2500);
+ 
+  lastmillis = millis();
+ 
+  Blynk.virtualWrite(V0, emon.Vrms);
+  Blynk.virtualWrite(V1, emon.Irms);     // Blynk.virtualWrite to send the data to Blynk based on the virtual pins set
+  Blynk.virtualWrite(V2, emon.apparentPower);
+  Blynk.virtualWrite(V3, kWh);
+}
+ 
+void setup()
+{
+  Serial.begin(9600);
+  Blynk.begin(auth, ssid, pass);
+  lcd.begin(16, 2);
+ 
+  emon.voltage(35, vCalibration, 1.7); // Voltage: input pin, calibration, phase_shift
+  emon.current(34, currCalibration); // Current: input pin, calibration.
+ 
+  timer.setInterval(5000L, myTimerEvent);
+  lcd.setCursor(3, 0);
+  lcd.print("IoT Energy");
+  lcd.setCursor(5, 1);
+  lcd.print("Meter");
+  delay(3000);
+  lcd.clear();
+}
+ 
+void loop()
+{
+  Blynk.run();   //we initialized the Serial baud rate and set the current and voltage sensor analog pin as GPIO34 & GPIO35. Then we set the timer to 5000L for an update time of 5 seconds
+  timer.run();
+}
